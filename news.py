@@ -92,38 +92,35 @@ Rules:
 
 # ---------- Pipeline steps ----------
 def collect_topic(client: OpenAI, topic: dict) -> dict:
-    """One Grok call with X + Web live search for one topic."""
-    response = client.chat.completions.create(
-        model="grok-4-fast-reasoning",
-        messages=[
+    """One Grok call using the Agent Tools API (x_search + web_search)."""
+    today_iso = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d")
+    user_input = (
+        f"Today's date is {today_iso}. Only return news from the past 24 hours.\n\n"
+        + topic["query"]
+    )
+    response = client.responses.create(
+        model="grok-4.3",
+        input=[
             {
                 "role": "system",
                 "content": (
-                    "You are a real-time news researcher. Use the search tools to find "
-                    "current information from X and the web. Return concise factual "
-                    "summaries with source URLs. Never invent facts."
+                    "You are a real-time news researcher. Use the x_search and "
+                    "web_search tools to find current information. Return concise "
+                    "factual summaries. Embed source URLs as markdown links "
+                    "[title](url) after each item. Never invent facts."
                 ),
             },
-            {"role": "user", "content": topic["query"]},
+            {"role": "user", "content": user_input},
         ],
-        extra_body={
-            "search_parameters": {
-                "mode": "on",
-                "sources": [{"type": "x"}, {"type": "web"}],
-                "max_search_results": 15,
-                "return_citations": True,
-                "from_date": datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d"),
-            }
-        },
+        tools=[
+            {"type": "x_search"},
+            {"type": "web_search"},
+        ],
         timeout=180,
     )
-    msg = response.choices[0].message
-    # Citations live on the response object (xAI extension)
-    citations = getattr(response, "citations", None) or []
     return {
         "name": topic["name"],
-        "content": msg.content or "",
-        "citations": citations,
+        "content": response.output_text or "",
     }
 
 
@@ -133,13 +130,11 @@ def synthesize_newsletter(client: Anthropic, topic_results: list) -> str:
     parts = [f"Today: {today_pst} (San Francisco time)\n\nRaw topic briefings:\n"]
     for r in topic_results:
         parts.append(f"\n=== {r['name']} ===\n{r['content']}")
-        if r["citations"]:
-            parts.append("\nCitations:\n" + "\n".join(r["citations"]))
     parts.append("\n\nNow produce the newsletter following the rules in the system prompt.")
     user_content = "\n".join(parts)
 
     msg = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",
         max_tokens=4000,
         system=NEWSLETTER_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
