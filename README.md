@@ -6,7 +6,7 @@ A personal AI-powered daily newsletter. Collects fresh news from X and the web v
 
 ```
 GitHub Actions cron (07:00 PDT)
-  -> Grok 4 Fast (X + Web live search, 4 topics in parallel)
+  -> Grok 4 Fast (X + Web live search, 5 topics in parallel)
   -> Claude Sonnet 4.5 (editorial synthesis)
   -> Resend (HTML email)
   -> Inbox
